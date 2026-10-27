@@ -37,6 +37,12 @@ import sys
 import os
 from datetime import datetime
 
+try:
+    import colorama
+    colorama.init(autoreset=False)
+except ImportError:
+    pass
+
 VERSAO = "2.1.0"
 
 
@@ -860,7 +866,12 @@ def iniciar_listener(ip, porta):
         try:
             subprocess.run(["ncat", "-lvnp", str(porta)], check=False)
         except FileNotFoundError:
-            _log("netcat/ncat nao encontrado. Instale: apt install netcat-traditional", "ERRO")
+            if sys.platform == "win32":
+                _log("netcat nao encontrado. Alternativas Windows:", "ERRO")
+                _log(f"  powercat : IEX(New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/besimorhino/powercat/master/powercat.ps1'); powercat -l -p {porta} -v", "INFO")
+                _log(f"  ncat     : ncat.exe -lvnp {porta}", "INFO")
+            else:
+                _log("netcat/ncat nao encontrado. Instale: apt install netcat-traditional", "ERRO")
 
 
 # ==============================================================================
