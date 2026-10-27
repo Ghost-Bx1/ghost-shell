@@ -68,7 +68,7 @@ Gerador completo de reverse shells, web shells e encoders para pentest e CTF. Su
 ## Instalacao
 
 ```bash
-# Sem dependencias obrigatorias — stdlib Python 3 apenas
+# Sem dependencias obrigatorias - stdlib Python 3 apenas
 python ghost-shell.py --help
 ```
 
