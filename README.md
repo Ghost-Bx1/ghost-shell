@@ -186,7 +186,7 @@ opcoes:
 ### `list` - Listar shells
 
 ```
-  Sem argumentos — lista todos os shells e web shells disponíveis
+  Sem argumentos - lista todos os shells e web shells disponiveis
 ```
 
 ---
