@@ -1745,6 +1745,8 @@ def main():
     # Modo HOLLOW
     sub.add_parser("hollow", help="Gerar template C de process hollowing com shellcode injection")
 
+    parser.add_argument("--no-banner", action="store_true", help="Suprimir banner")
+
     args = parser.parse_args()
 
     if not args.modo:
@@ -1752,7 +1754,8 @@ def main():
         parser.print_help()
         sys.exit(0)
 
-    print(BANNER)
+    if not args.no_banner:
+        print(BANNER)
 
     if args.modo == "list":
         print(f"\n{C['C']}{C['N']}  REVERSE SHELLS DISPONIVEIS:{C['X']}")
