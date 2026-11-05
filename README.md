@@ -1,6 +1,6 @@
 # Ghost-Shell
 
-> Reverse shell, web shell, and payload encoder for 25+ languages and 9 web shell types.
+> Payload generator - reverse shells, web shells, and encoders for 25+ languages.
 
 ```
   GHOST-SHELL  v1.0.0  |  Reverse Shell & Web Shell Generator
@@ -221,6 +221,23 @@ Improvements planned based on analysis of revshells.com, msfvenom and nishang:
 | Medium | Auto stabilization guide | After `--listen`, auto-print PTY stabilization steps (python3 pty + stty raw) |
 | Low | Shellcode formatter | Output raw shellcode as C array, Python bytes, PS byte array or hex string |
 | Low | DLL hijacking templates | Generate a hijackable DLL stub in C for common Windows DLL search order abuses |
+
+## Ghost Toolkit
+
+| Tool | Description |
+|------|-------------|
+| [ghost-ad](https://github.com/Ghost-Bx1/ghost-ad) | Active Directory - LDAP, Kerberoasting, AS-REP Roasting, BloodHound-lite |
+| [ghost-cloud](https://github.com/Ghost-Bx1/ghost-cloud) | Cloud Security - AWS, Azure and GCP misconfiguration scanner |
+| [ghost-fuzz](https://github.com/Ghost-Bx1/ghost-fuzz) | Web Fuzzing - directory brute-force, parameter fuzzing, vhost enumeration |
+| [ghost-osint](https://github.com/Ghost-Bx1/ghost-osint) | OSINT - domain, email and IP intelligence from public sources |
+| [ghost-privesc](https://github.com/Ghost-Bx1/ghost-privesc) | Privilege Escalation - Linux privesc checker, 17 vectors, GTFOBins |
+| [ghost-recon](https://github.com/Ghost-Bx1/ghost-recon) | Reconnaissance - DNS, SSL, WAF, subdomain enumeration, email security |
+| [ghost-report](https://github.com/Ghost-Bx1/ghost-report) | Reporting - pentest report generator from any ghost-* JSON output |
+| [ghost-scan](https://github.com/Ghost-Bx1/ghost-scan) | Port Scanner - async TCP/UDP scanner with banner grabbing and CVE correlation |
+| [ghost-shell](https://github.com/Ghost-Bx1/ghost-shell) | Payload Generation - reverse shell and web shell generator, 25+ languages |
+| [ghost-spray](https://github.com/Ghost-Bx1/ghost-spray) | Credential Attacks - password spraying, stuffing, default credential testing |
+
+---
 
 ## Disclaimer
 
