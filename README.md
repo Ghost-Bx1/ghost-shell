@@ -201,27 +201,6 @@ rlwrap nc -lvnp 4444
 | `-d DATA`     | Payload to encode                                         |
 | `-e ENCODING` | Type: base64, base64_utf16, url, double_url, hex          |
 
----
-
-## Roadmap
-
-Improvements planned based on analysis of revshells.com, msfvenom and nishang:
-
-| Priority | Feature | Description |
-|----------|---------|-------------|
-| High | AMSI bypass prepend | Auto-prepend PowerShell AMSI bypass snippet before any PS payload (`--amsi`) |
-| High | ETW patch snippets | Prepend Event Tracing for Windows (ETW) patching to PowerShell one-liners (`--etw`) |
-| High | Obfuscation engine | Variable name randomization, string splitting, tick insertion for PS payloads (`--obfuscate`) |
-| High | Container escape payloads | cgroup notify_on_release, procfs host process exec, exposed Docker socket abuse |
-| High | Staged cradle generator | Download+exec cradle separate from stage: certutil, bitsadmin, PS IEX, curl|bash |
-| High | Cloud SSRF-to-shell | SSRF payloads targeting IMDSv1 (169.254.169.254) to exfil cloud creds |
-| Medium | Process injection templates | CreateRemoteThread, QueueAPC, EarlyBird in C/C# stub form with shellcode placeholder |
-| Medium | Kubernetes payloads | kubectl exec -it template, kube-apiserver unauthenticated RCE template |
-| Medium | LOLBAS/GTFOBins hints | After generating a shell, suggest living-off-the-land alternatives for the detected OS |
-| Medium | Auto stabilization guide | After `--listen`, auto-print PTY stabilization steps (python3 pty + stty raw) |
-| Low | Shellcode formatter | Output raw shellcode as C array, Python bytes, PS byte array or hex string |
-| Low | DLL hijacking templates | Generate a hijackable DLL stub in C for common Windows DLL search order abuses |
-
 ## Ghost Toolkit
 
 | Tool | Description |
