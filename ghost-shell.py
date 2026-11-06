@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Ghost-Shell v1.0.0 - Gerador de Reverse Shells e Web Shells
 ============================================================
